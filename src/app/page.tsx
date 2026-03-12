@@ -1,65 +1,211 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useCallback, useMemo, lazy, Suspense } from "react";
+import { ImageUploader } from "@/components/ImageUploader";
+import { ControlPanel } from "@/components/ControlPanel";
+import { PipelineStatus } from "@/components/PipelineStatus";
+import { MOCK_MANIFEST, applyParametricTransform } from "@/lib/mock-data";
+import { PipelineState } from "@/lib/pipeline";
+import { ParametricManifest, ParametricConfig } from "@/types/manifest";
+import { Box, Layers, Sliders } from "lucide-react";
+
+const Viewer3D = lazy(() =>
+  import("@/components/Viewer3D").then((m) => ({ default: m.Viewer3D }))
+);
 
 export default function Home() {
+  const [pipeline, setPipeline] = useState<PipelineState>({
+    stage: "idle",
+    progress: 0,
+    message: "",
+  });
+  const [manifest, setManifest] = useState<ParametricManifest>(MOCK_MANIFEST);
+  const [config, setConfig] = useState<ParametricConfig>(() => {
+    const initial: ParametricConfig = {};
+    MOCK_MANIFEST.parameters.forEach((p) => {
+      initial[p.id] = p.default;
+    });
+    return initial;
+  });
+
+  const transforms = useMemo(
+    () => applyParametricTransform(config, manifest),
+    [config, manifest]
+  );
+
+  const handleImageSelected = useCallback(
+    async (file: File, dataUrl: string) => {
+      setPipeline({
+        stage: "uploading",
+        progress: 10,
+        message: "Uploading image...",
+        imageDataUrl: dataUrl,
+      });
+
+      try {
+        // Step 1: Generate mesh via Rodin
+        setPipeline((s) => ({
+          ...s,
+          stage: "generating-mesh",
+          progress: 30,
+          message: "Generating 3D mesh via Rodin API...",
+        }));
+
+        const meshFormData = new FormData();
+        meshFormData.append("image", file);
+
+        const meshRes = await fetch("/api/generate-mesh", {
+          method: "POST",
+          body: meshFormData,
+        });
+        const meshData = await meshRes.json();
+
+        if (!meshRes.ok) throw new Error(meshData.error);
+
+        // Step 2: Generate parametric schema via Gemini
+        setPipeline((s) => ({
+          ...s,
+          stage: "generating-schema",
+          progress: 60,
+          message: "Analyzing product and generating parametric schema...",
+          meshUrl: meshData.glbUrl,
+        }));
+
+        const schemaRes = await fetch("/api/generate-schema", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageDataUrl: dataUrl }),
+        });
+        const schemaData = await schemaRes.json();
+
+        if (!schemaRes.ok) throw new Error(schemaData.error);
+
+        // Apply the generated manifest
+        const newManifest = schemaData.manifest as ParametricManifest;
+        setManifest(newManifest);
+
+        // Reset config to defaults
+        const newConfig: ParametricConfig = {};
+        newManifest.parameters.forEach((p) => {
+          newConfig[p.id] = p.default;
+        });
+        setConfig(newConfig);
+
+        setPipeline({
+          stage: "ready",
+          progress: 100,
+          message: schemaData.mock
+            ? "Demo mode — configure parametric controls below"
+            : "Parametric configurator ready",
+          meshUrl: meshData.glbUrl,
+          imageDataUrl: dataUrl,
+        });
+      } catch (err) {
+        setPipeline({
+          stage: "error",
+          progress: 0,
+          message:
+            err instanceof Error ? err.message : "Pipeline failed",
+          error: String(err),
+        });
+      }
+    },
+    []
+  );
+
+  const handleParamChange = useCallback((id: string, value: number) => {
+    setConfig((prev) => ({ ...prev, [id]: value }));
+  }, []);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen flex flex-col">
+      {/* Header */}
+      <header className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center">
+            <Box className="w-5 h-5 text-zinc-950" />
+          </div>
+          <div>
+            <h1 className="text-sm font-bold tracking-tight">
+              Spokbee 4.0
+            </h1>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
+              Parametric 3D Engine
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+        <div className="flex items-center gap-2 text-xs text-zinc-600">
+          <Layers className="w-3 h-3" />
+          <span>VLM-Authored Mesh Transformation Pipeline</span>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <div className="flex-1 flex">
+        {/* Left sidebar — controls */}
+        <aside className="w-80 border-r border-zinc-800 p-4 flex flex-col gap-4 overflow-y-auto">
+          {/* Pipeline status */}
+          <PipelineStatus state={pipeline} />
+
+          {/* Image upload */}
+          <div>
+            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Layers className="w-3 h-3" />
+              Input
+            </h3>
+            <ImageUploader
+              onImageSelected={handleImageSelected}
+              disabled={
+                pipeline.stage !== "idle" &&
+                pipeline.stage !== "ready" &&
+                pipeline.stage !== "error"
+              }
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </div>
+
+          {/* Parametric controls */}
+          <div>
+            <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Sliders className="w-3 h-3" />
+              Configurator
+            </h3>
+            <ControlPanel
+              parameters={manifest.parameters}
+              config={config}
+              onChange={handleParamChange}
+            />
+          </div>
+
+          {/* Config JSON preview */}
+          <div className="mt-auto pt-4 border-t border-zinc-800">
+            <h3 className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider mb-2">
+              Config State
+            </h3>
+            <pre className="text-[10px] text-zinc-500 bg-zinc-900 rounded-lg p-2 overflow-x-auto font-mono">
+              {JSON.stringify(config, null, 2)}
+            </pre>
+          </div>
+        </aside>
+
+        {/* 3D Viewer */}
+        <section className="flex-1 p-4">
+          <Suspense
+            fallback={
+              <div className="w-full h-full flex items-center justify-center text-zinc-600 bg-zinc-950 rounded-xl border border-zinc-800">
+                Loading 3D viewer...
+              </div>
+            }
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <Viewer3D
+              heightScale={transforms.heightScale}
+              widthScale={transforms.widthScale}
+              depthScale={transforms.depthScale}
+              drawerCount={transforms.drawerCount}
+              meshUrl={pipeline.meshUrl}
+            />
+          </Suspense>
+        </section>
+      </div>
+    </main>
   );
 }

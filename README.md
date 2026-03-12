@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Spokbee 4.0 — Parametric 3D Generation Engine
+
+**2D Image → AI-Generated Mesh → Parametric Configurator**
+
+A Next.js 15 prototype implementing the VLM-authored mesh transformation pipeline from the Spokbee 4.0 architecture.
+
+## Architecture
+
+1. **Image Upload** — User uploads a 2D product photo
+2. **Mesh Generation** — Hyper3D Rodin Gen-2 API generates a GLB mesh
+3. **VLM Analysis** — Gemini 2.5 Pro analyzes the mesh and generates a Parametric Manifest (JSON schema + Three.js transformation script)
+4. **Parametric Viewer** — React Three Fiber renders the mesh with real-time parametric controls (sliders/toggles)
+
+## Stack
+
+- Next.js 15 (App Router, Turbopack)
+- React Three Fiber + drei
+- Tailwind CSS v4
+- TypeScript
+- Zod (manifest validation)
+- three-bvh-csg (mesh operations)
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
+cp .env.local.example .env.local  # Add your API keys
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API Keys
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Set in `.env.local`:
 
-## Learn More
+- `RODIN_API_KEY` — [Hyper3D Rodin](https://hyper3d.ai) for mesh generation
+- `GEMINI_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey) for VLM analysis
 
-To learn more about Next.js, take a look at the following resources:
+**Demo mode works without keys** — the app returns mock responses to demonstrate the full UI/interaction flow.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── generate-mesh/route.ts    # Rodin API integration
+│   │   └── generate-schema/route.ts  # Gemini VLM analysis
+│   ├── layout.tsx
+│   ├── page.tsx                      # Main page with pipeline orchestration
+│   └── globals.css
+├── components/
+│   ├── ControlPanel.tsx              # Dynamic parametric sliders
+│   ├── ImageUploader.tsx             # Drag-and-drop image upload
+│   ├── PipelineStatus.tsx            # Pipeline stage indicator
+│   └── Viewer3D.tsx                  # R3F 3D viewer with procedural cabinet
+├── lib/
+│   ├── mock-data.ts                  # Mock manifest for demo mode
+│   └── pipeline.ts                   # Pipeline state types
+└── types/
+    └── manifest.ts                   # Zod schemas for Parametric Manifest
+```
