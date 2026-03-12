@@ -1,8 +1,8 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Environment, ContactShadows, Grid } from "@react-three/drei";
-import { Suspense, useMemo } from "react";
+import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from "@react-three/drei";
+import { Suspense, useMemo, useEffect, useRef, Component, type ReactNode } from "react";
 import * as THREE from "three";
 
 interface Viewer3DProps {
@@ -109,6 +109,49 @@ function Cabinet({
   );
 }
 
+function GLBMesh({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  const groupRef = useRef<THREE.Group>(null);
+
+  useEffect(() => {
+    // Center and scale the loaded model
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    // Scale to fit within a 2-unit bounding box
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = maxDim > 0 ? 2 / maxDim : 1;
+
+    scene.scale.setScalar(scale);
+    scene.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+  }, [scene]);
+
+  return (
+    <group ref={groupRef}>
+      <primitive object={scene} />
+    </group>
+  );
+}
+
+class MeshErrorBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidUpdate(prevProps: { children: ReactNode }) {
+    if (prevProps.children !== this.props.children) {
+      this.setState({ hasError: false });
+    }
+  }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
+
 function LoadingFallback() {
   return (
     <mesh>
@@ -131,12 +174,27 @@ export function Viewer3D(props: Viewer3DProps) {
         <directionalLight position={[-3, 4, -2]} intensity={0.3} />
 
         <Suspense fallback={<LoadingFallback />}>
-          <Cabinet
-            heightScale={props.heightScale}
-            widthScale={props.widthScale}
-            depthScale={props.depthScale}
-            drawerCount={props.drawerCount}
-          />
+          {props.meshUrl ? (
+            <MeshErrorBoundary
+              fallback={
+                <Cabinet
+                  heightScale={props.heightScale}
+                  widthScale={props.widthScale}
+                  depthScale={props.depthScale}
+                  drawerCount={props.drawerCount}
+                />
+              }
+            >
+              <GLBMesh url={props.meshUrl} />
+            </MeshErrorBoundary>
+          ) : (
+            <Cabinet
+              heightScale={props.heightScale}
+              widthScale={props.widthScale}
+              depthScale={props.depthScale}
+              drawerCount={props.drawerCount}
+            />
+          )}
           <ContactShadows
             position={[0, -0.01, 0]}
             opacity={0.4}
