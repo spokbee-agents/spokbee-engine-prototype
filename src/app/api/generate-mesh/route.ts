@@ -17,7 +17,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
     }
 
-    // If no API key, return mock response for demo
     if (!FAL_KEY) {
       console.log("[MOCK] fal.ai Rodin API — returning demo GLB URL");
       await new Promise((r) => setTimeout(r, 2000));
@@ -29,19 +28,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Convert the uploaded File to a base64 data URL for fal
-    const arrayBuffer = await image.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const mimeType = image.type || "image/png";
-    const base64 = buffer.toString("base64");
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    console.log("Uploading image to FAL storage...");
+    // Upload the File directly without converting to Buffer/Blob manually
+    const imageUrl = await fal.storage.upload(image);
+    console.log("Image uploaded successfully:", imageUrl);
 
-    // Upload to fal storage so the model endpoint can access it
-    const imageUrl = await fal.storage.upload(
-      new Blob([buffer], { type: mimeType })
-    );
-
-    // Call the fal-ai/rodin endpoint (Image-to-3D)
+    console.log("Calling fal-ai/rodin...");
+    // Call the fal-ai/rodin endpoint
     const result = await fal.subscribe("fal-ai/rodin", {
       input: {
         input_image_url: imageUrl,
@@ -53,7 +46,8 @@ export async function POST(request: NextRequest) {
       logs: true,
     });
 
-    // Extract the GLB URL from the result
+    console.log("Rodin Generation Complete.");
+
     const glbUrl =
       (result.data as Record<string, unknown>)?.glb_url ||
       (result.data as Record<string, unknown>)?.model_url ||
