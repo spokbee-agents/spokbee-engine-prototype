@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fal } from "@fal-ai/client";
 
-// Hyper3D Rodin Gen-2 API integration
-// Docs: https://hyper3d.ai/docs
+// Configure fal client with API key from environment
+const FAL_KEY = process.env.FAL_KEY;
 
-const RODIN_API_KEY = process.env.RODIN_API_KEY;
-const RODIN_BASE_URL = "https://hyperhuman.deemos.com/api/v2";
+if (FAL_KEY) {
+  fal.config({ credentials: FAL_KEY });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,116 +18,62 @@ export async function POST(request: NextRequest) {
     }
 
     // If no API key, return mock response for demo
-    if (!RODIN_API_KEY) {
-      console.log("[MOCK] Rodin API — returning demo GLB URL");
-      // Simulate processing delay
+    if (!FAL_KEY) {
+      console.log("[MOCK] fal.ai Rodin API — returning demo GLB URL");
       await new Promise((r) => setTimeout(r, 2000));
       return NextResponse.json({
         status: "Done",
         glbUrl: "/mock/demo_cabinet.glb",
         mock: true,
-        message: "Mock response — set RODIN_API_KEY in .env.local for real generation",
+        message: "Mock response — set FAL_KEY in .env.local for real generation",
       });
     }
 
-    // Step 1: Submit generation task
-    const rodinFormData = new FormData();
-    rodinFormData.append("images", image, image.name);
-    rodinFormData.append("mesh_mode", "Quad");
-    rodinFormData.append("quality", "high");
-    rodinFormData.append("material", "PBR");
-    rodinFormData.append("tier", "Regular");
+    // Convert the uploaded File to a base64 data URL for fal
+    const arrayBuffer = await image.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const mimeType = image.type || "image/png";
+    const base64 = buffer.toString("base64");
+    const dataUrl = `data:${mimeType};base64,${base64}`;
 
-    const submitRes = await fetch(`${RODIN_BASE_URL}/submit`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RODIN_API_KEY}`,
+    // Upload to fal storage so the model endpoint can access it
+    const imageUrl = await fal.storage.upload(
+      new Blob([buffer], { type: mimeType })
+    );
+
+    // Call the fal-ai/rodin endpoint (Image-to-3D)
+    const result = await fal.subscribe("fal-ai/rodin", {
+      input: {
+        input_image_url: imageUrl,
+        mesh_mode: "Quad",
+        quality: "high",
+        material: "PBR",
+        tier: "Regular",
       },
-      body: rodinFormData,
+      logs: true,
     });
 
-    if (!submitRes.ok) {
-      const err = await submitRes.text();
-      return NextResponse.json(
-        { error: `Rodin submit failed: ${err}` },
-        { status: submitRes.status }
-      );
-    }
+    // Extract the GLB URL from the result
+    const glbUrl =
+      (result.data as Record<string, unknown>)?.glb_url ||
+      (result.data as Record<string, unknown>)?.model_url ||
+      ((result.data as Record<string, unknown>)?.outputs as Record<string, unknown>)?.glb;
 
-    const submitData = await submitRes.json();
-    const taskUuid = submitData.uuid;
-
-    if (!taskUuid) {
+    if (!glbUrl) {
+      console.error("Unexpected fal response shape:", JSON.stringify(result.data));
       return NextResponse.json(
-        { error: "No task UUID returned from Rodin" },
+        { error: "No GLB URL in fal response" },
         { status: 500 }
       );
     }
-
-    // Step 2: Poll for completion
-    let status = "Processing";
-    let attempts = 0;
-    const maxAttempts = 60; // 5 minutes max
-
-    while (status !== "Done" && attempts < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 5000));
-      attempts++;
-
-      const statusRes = await fetch(`${RODIN_BASE_URL}/status`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${RODIN_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ uuid: taskUuid }),
-      });
-
-      if (!statusRes.ok) continue;
-
-      const statusData = await statusRes.json();
-      status = statusData.status;
-
-      if (status === "Failed") {
-        return NextResponse.json(
-          { error: "Rodin mesh generation failed" },
-          { status: 500 }
-        );
-      }
-    }
-
-    if (status !== "Done") {
-      return NextResponse.json(
-        { error: "Rodin generation timed out" },
-        { status: 504 }
-      );
-    }
-
-    // Step 3: Download the GLB
-    const downloadRes = await fetch(`${RODIN_BASE_URL}/download`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RODIN_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ uuid: taskUuid }),
-    });
-
-    if (!downloadRes.ok) {
-      return NextResponse.json(
-        { error: "Failed to download GLB from Rodin" },
-        { status: 500 }
-      );
-    }
-
-    const downloadData = await downloadRes.json();
 
     return NextResponse.json({
       status: "Done",
-      glbUrl: downloadData.list?.[0]?.url || downloadData.url,
-      taskUuid,
+      glbUrl,
+      requestId: result.requestId,
     });
   } catch (error) {
-    console.error("Rodin API error:", error);
+    console.error("fal.ai Rodin API error:", error);
     return NextResponse.json(
       { error: `Internal error: ${error instanceof Error ? error.message : "Unknown"}` },
       { status: 500 }
