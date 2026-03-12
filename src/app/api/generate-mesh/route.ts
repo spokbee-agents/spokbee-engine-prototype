@@ -28,16 +28,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log("Uploading image to FAL storage...");
-    // Upload the File directly without converting to Buffer/Blob manually
-    const imageUrl = await fal.storage.upload(image);
-    console.log("Image uploaded successfully:", imageUrl);
+    // Convert File to base64 data URI to bypass fal.storage.upload() issues in Vercel
+    const arrayBuffer = await image.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const mimeType = image.type || "image/jpeg";
+    const dataUri = `data:${mimeType};base64,${base64}`;
+    console.log("Image converted to data URI (%s, %d bytes)", mimeType, arrayBuffer.byteLength);
 
     console.log("Calling fal-ai/rodin...");
-    // Call the fal-ai/rodin endpoint
     const result = await fal.subscribe("fal-ai/rodin", {
       input: {
-        input_image_url: imageUrl,
+        input_image_url: dataUri,
         mesh_mode: "Quad",
         quality: "high",
         material: "PBR",
