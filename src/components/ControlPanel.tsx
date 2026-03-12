@@ -32,10 +32,12 @@ export function ControlPanel({ parameters, config, onChange }: ControlPanelProps
               step={param.step ?? (param.type === "discrete" ? 1 : 0.1)}
               value={value}
               onChange={(e) => onChange(param.id, parseFloat(e.target.value))}
-              className="w-full h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer
+              className="w-full h-2 md:h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer
                 [&::-webkit-slider-thumb]:appearance-none
-                [&::-webkit-slider-thumb]:w-4
-                [&::-webkit-slider-thumb]:h-4
+                [&::-webkit-slider-thumb]:w-6
+                [&::-webkit-slider-thumb]:h-6
+                [&::-webkit-slider-thumb]:md:w-4
+                [&::-webkit-slider-thumb]:md:h-4
                 [&::-webkit-slider-thumb]:rounded-full
                 [&::-webkit-slider-thumb]:bg-amber-500
                 [&::-webkit-slider-thumb]:hover:bg-amber-400

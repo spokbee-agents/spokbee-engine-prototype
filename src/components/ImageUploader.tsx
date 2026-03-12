@@ -57,10 +57,10 @@ export function ImageUploader({ onImageSelected, disabled }: ImageUploaderProps)
           />
           <button
             onClick={clear}
-            className="absolute top-2 right-2 p-1 bg-zinc-800 rounded-full hover:bg-zinc-700 transition-colors"
+            className="absolute top-2 right-2 p-2 md:p-1 bg-zinc-800 rounded-full hover:bg-zinc-700 transition-colors"
             disabled={disabled}
           >
-            <X className="w-4 h-4 text-zinc-400" />
+            <X className="w-5 h-5 md:w-4 md:h-4 text-zinc-400" />
           </button>
           <div className="px-3 py-2 text-xs text-zinc-500 border-t border-zinc-800">
             <ImageIcon className="w-3 h-3 inline mr-1" />

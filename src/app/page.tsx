@@ -118,9 +118,9 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className="h-screen flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between">
+      <header className="border-b border-zinc-800 px-4 md:px-6 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center">
             <Box className="w-5 h-5 text-zinc-950" />
@@ -134,16 +134,35 @@ export default function Home() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-zinc-600">
+        <div className="hidden sm:flex items-center gap-2 text-xs text-zinc-600">
           <Layers className="w-3 h-3" />
           <span>VLM-Authored Mesh Transformation Pipeline</span>
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="flex-1 flex">
-        {/* Left sidebar — controls */}
-        <aside className="w-80 border-r border-zinc-800 p-4 flex flex-col gap-4 overflow-y-auto">
+      {/* Main content — stacks vertically on mobile, side-by-side on md+ */}
+      <div className="flex-1 flex flex-col md:flex-row min-h-0">
+        {/* 3D Viewer — top on mobile (50vh), left 2/3 on desktop */}
+        <section className="h-[50vh] md:h-auto md:flex-[2] p-3 md:p-4 shrink-0 md:shrink">
+          <Suspense
+            fallback={
+              <div className="w-full h-full flex items-center justify-center text-zinc-600 bg-zinc-950 rounded-xl border border-zinc-800">
+                Loading 3D viewer...
+              </div>
+            }
+          >
+            <Viewer3D
+              heightScale={transforms.heightScale}
+              widthScale={transforms.widthScale}
+              depthScale={transforms.depthScale}
+              drawerCount={transforms.drawerCount}
+              meshUrl={pipeline.meshUrl}
+            />
+          </Suspense>
+        </section>
+
+        {/* Control panel — scrolls below viewer on mobile, right 1/3 sidebar on desktop */}
+        <aside className="flex-1 md:flex-[1] border-t md:border-t-0 md:border-l border-zinc-800 p-4 md:p-4 flex flex-col gap-4 overflow-y-auto">
           {/* Pipeline status */}
           <PipelineStatus state={pipeline} />
 
@@ -186,25 +205,6 @@ export default function Home() {
             </pre>
           </div>
         </aside>
-
-        {/* 3D Viewer */}
-        <section className="flex-1 p-4">
-          <Suspense
-            fallback={
-              <div className="w-full h-full flex items-center justify-center text-zinc-600 bg-zinc-950 rounded-xl border border-zinc-800">
-                Loading 3D viewer...
-              </div>
-            }
-          >
-            <Viewer3D
-              heightScale={transforms.heightScale}
-              widthScale={transforms.widthScale}
-              depthScale={transforms.depthScale}
-              drawerCount={transforms.drawerCount}
-              meshUrl={pipeline.meshUrl}
-            />
-          </Suspense>
-        </section>
       </div>
     </main>
   );
