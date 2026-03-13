@@ -20,7 +20,7 @@ export function ControlPanel({ parameters, config, onChange }: ControlPanelProps
           <div key={param.id} className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-sm text-zinc-400">{param.label}</label>
-              <span className="text-sm font-mono text-amber-400">
+              <span className="text-sm font-mono text-violet-400">
                 {param.type === "discrete" ? Math.round(value) : value.toFixed(1)}
                 {param.unit ? ` ${param.unit}` : ""}
               </span>
@@ -39,8 +39,8 @@ export function ControlPanel({ parameters, config, onChange }: ControlPanelProps
                 [&::-webkit-slider-thumb]:md:w-4
                 [&::-webkit-slider-thumb]:md:h-4
                 [&::-webkit-slider-thumb]:rounded-full
-                [&::-webkit-slider-thumb]:bg-amber-500
-                [&::-webkit-slider-thumb]:hover:bg-amber-400
+                [&::-webkit-slider-thumb]:bg-violet-500
+                [&::-webkit-slider-thumb]:hover:bg-violet-400
                 [&::-webkit-slider-thumb]:transition-colors"
             />
             <div className="flex justify-between text-[10px] text-zinc-600">

@@ -94,7 +94,7 @@ export function ProductInput({ onSubmit, disabled }: ProductInputProps) {
           <button
             onClick={handleGenerate}
             disabled={disabled || !prompt.trim()}
-            className="p-2 mt-1 mr-1 rounded-md text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-2 mt-1 mr-1 rounded-md text-zinc-400 hover:text-violet-400 hover:bg-zinc-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Send className="w-4 h-4" />
           </button>
@@ -127,7 +127,7 @@ export function ProductInput({ onSubmit, disabled }: ProductInputProps) {
         <label
           className={`flex flex-col items-center justify-center w-full h-24 rounded-xl border-2 border-dashed transition-colors cursor-pointer ${
             dragActive
-              ? "border-amber-500 bg-amber-500/10"
+              ? "border-violet-500 bg-violet-500/10"
               : "border-zinc-700 hover:border-zinc-500 bg-zinc-900/50"
           } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
           onDragOver={(e) => {
@@ -160,7 +160,8 @@ export function ProductInput({ onSubmit, disabled }: ProductInputProps) {
           onClick={handleGenerate}
           disabled={disabled || !hasInput}
           className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg
-            bg-amber-600 hover:bg-amber-500 text-sm font-medium text-white transition-colors
+            bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500
+            text-sm font-medium text-white transition-all active:scale-[0.98]
             disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Wand2 className="w-4 h-4" />

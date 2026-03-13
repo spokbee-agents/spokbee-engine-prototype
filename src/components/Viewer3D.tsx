@@ -29,6 +29,8 @@ interface Viewer3DProps {
   refinedMeshUrl?: string;
   refinementBaselineConfig?: ParametricConfig;
   onRepeatCountChanged?: (changed: boolean) => void;
+  autoRotate?: boolean;
+  className?: string;
 }
 
 // ─── Dispose Helper ───────────────────────────────────────────────────────────
@@ -175,19 +177,23 @@ export function Viewer3D({
   refinedMeshUrl,
   refinementBaselineConfig,
   onRepeatCountChanged,
+  autoRotate = false,
+  className,
 }: Viewer3DProps) {
   const hasRefinedMesh = !!(refinedMeshUrl && refinementBaselineConfig);
 
   return (
-    <div className="w-full h-full rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800">
+    <div className={className ?? "w-full h-full rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800"}>
       <Canvas
         camera={{ position: [3, 2.5, 3], fov: 45 }}
         gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}
+        dpr={autoRotate ? [1, 1.5] : undefined}
       >
-        <color attach="background" args={["#0a0a0a"]} />
+        <color attach="background" args={["#060609"]} />
         <ambientLight intensity={0.4} />
-        <directionalLight position={[5, 8, 5]} intensity={1} castShadow />
+        <directionalLight position={[5, 8, 5]} intensity={autoRotate ? 1.4 : 1} castShadow />
         <directionalLight position={[-3, 4, -2]} intensity={0.3} />
+        {autoRotate && <directionalLight position={[0, 2, -5]} intensity={0.2} />}
 
         <Suspense fallback={<LoadingFallback />}>
           {hasRefinedMesh ? (
@@ -212,23 +218,29 @@ export function Viewer3D({
             blur={2}
             far={4}
           />
-          <Grid
-            position={[0, 0, 0]}
-            args={[10, 10]}
-            cellSize={0.5}
-            cellThickness={0.5}
-            cellColor="#1a1a1a"
-            sectionSize={2}
-            sectionThickness={1}
-            sectionColor="#2a2a2a"
-            fadeDistance={10}
-            infiniteGrid
-          />
+          {!autoRotate && (
+            <Grid
+              position={[0, 0, 0]}
+              args={[10, 10]}
+              cellSize={0.5}
+              cellThickness={0.5}
+              cellColor="#1a1a1a"
+              sectionSize={2}
+              sectionThickness={1}
+              sectionColor="#2a2a2a"
+              fadeDistance={10}
+              infiniteGrid
+            />
+          )}
           <Environment preset="studio" />
         </Suspense>
 
         <OrbitControls
           makeDefault
+          autoRotate={autoRotate}
+          autoRotateSpeed={1.5}
+          enableZoom={!autoRotate}
+          enablePan={!autoRotate}
           minDistance={2}
           maxDistance={10}
           minPolarAngle={0.2}

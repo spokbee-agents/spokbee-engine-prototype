@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-background: #0a0a0a;
-  --color-foreground: #ededed;
+  --color-background: #09090b;
+  --color-foreground: #f4f4f5;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -10,6 +10,57 @@
 html,
 body {
   height: 100%;
-  background: #0a0a0a;
-  color: #ededed;
+  background: #09090b;
+  color: #f4f4f5;
+}
+
+/* Scroll-triggered fade-in */
+.animate-in {
+  animation: animateIn 0.7s ease-out forwards;
+}
+
+.animate-in-delay-1 {
+  animation: animateIn 0.7s ease-out 0.1s forwards;
+  opacity: 0;
+}
+
+.animate-in-delay-2 {
+  animation: animateIn 0.7s ease-out 0.2s forwards;
+  opacity: 0;
+}
+
+.animate-in-delay-3 {
+  animation: animateIn 0.7s ease-out 0.3s forwards;
+  opacity: 0;
+}
+
+@keyframes animateIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Shimmer loading effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(139, 92, 246, 0.06) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Gradient text helper */
+.text-gradient {
+  background: linear-gradient(135deg, #a78bfa, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

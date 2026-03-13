@@ -19,7 +19,7 @@ export function PipelineStatus({ state }: PipelineStatusProps) {
           : isDone
           ? "bg-emerald-950/50 border border-emerald-800 text-emerald-400"
           : isProcessing
-          ? "bg-amber-950/50 border border-amber-800 text-amber-400"
+          ? "bg-violet-950/50 border border-violet-800 text-violet-400"
           : "bg-zinc-900 border border-zinc-800 text-zinc-500"
       }`}
     >
