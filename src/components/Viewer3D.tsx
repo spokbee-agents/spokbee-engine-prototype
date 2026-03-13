@@ -19,18 +19,20 @@ import {
 import * as THREE from "three";
 import type { AssemblySchema, ParametricConfig } from "@/types/assembly-schema";
 import { buildAssembly } from "@/engine/geometry-engine";
+import { deformRodinMesh } from "@/engine/rodin-deformer";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Viewer3DProps {
   schema: AssemblySchema;
   config: ParametricConfig;
-  refinedMeshUrl?: string; // optional Rodin-refined GLB
+  refinedMeshUrl?: string;
+  refinementBaselineConfig?: ParametricConfig;
+  onRepeatCountChanged?: (changed: boolean) => void;
 }
 
 // ─── Dispose Helper ───────────────────────────────────────────────────────────
 
-/** Recursively dispose all geometries and materials in an Object3D tree. */
 function disposeObject(obj: THREE.Object3D): void {
   obj.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -59,50 +61,76 @@ function ProceduralMesh({
     return buildAssembly(schema, config);
   }, [schema, config]);
 
-  // Dispose the previous group when a new one is built
   useEffect(() => {
     const prev = prevGroupRef.current;
     prevGroupRef.current = group;
-
     return () => {
-      if (prev) {
-        disposeObject(prev);
-      }
+      if (prev) disposeObject(prev);
     };
   }, [group]);
 
   return <primitive object={group} />;
 }
 
-// ─── GLB Mesh (for Rodin-refined models) ──────────────────────────────────────
+// ─── Refined Parametric Mesh (Rodin GLB with parametric deformation) ─────────
 
-function GLBMesh({ url }: { url: string }) {
+function RefinedParametricMesh({
+  url,
+  schema,
+  config,
+  baselineConfig,
+  onRepeatCountChanged,
+}: {
+  url: string;
+  schema: AssemblySchema;
+  config: ParametricConfig;
+  baselineConfig: ParametricConfig;
+  onRepeatCountChanged?: (changed: boolean) => void;
+}) {
   const { scene } = useGLTF(url);
-  const groupRef = useRef<THREE.Group>(null);
-  const clonedScene = useMemo(() => scene.clone(true), [scene]);
+
+  // Normalize the raw Rodin scene once: scale to 2-unit box, ground on Y=0
+  const normalizedScene = useMemo(() => {
+    const cloned = scene.clone(true);
+    const box = new THREE.Box3().setFromObject(cloned);
+    if (!box.isEmpty()) {
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = maxDim > 0 ? 2 / maxDim : 1;
+      cloned.scale.set(scale, scale, scale);
+      cloned.position.set(
+        -center.x * scale,
+        -box.min.y * scale,
+        -center.z * scale
+      );
+    }
+    return cloned;
+  }, [scene]);
+
+  const prevDeformedRef = useRef<THREE.Group | null>(null);
+
+  // Deform the normalized Rodin mesh on every config change
+  const deformed = useMemo(() => {
+    const result = deformRodinMesh(
+      normalizedScene,
+      schema,
+      baselineConfig,
+      config
+    );
+    onRepeatCountChanged?.(result.repeatCountChanged);
+    return result.scene;
+  }, [normalizedScene, schema, baselineConfig, config, onRepeatCountChanged]);
 
   useEffect(() => {
-    // Center and scale the loaded model to fit within a 2-unit box, grounded on Y=0
-    const box = new THREE.Box3().setFromObject(clonedScene);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
+    const prev = prevDeformedRef.current;
+    prevDeformedRef.current = deformed;
+    return () => {
+      if (prev && prev !== normalizedScene) disposeObject(prev);
+    };
+  }, [deformed, normalizedScene]);
 
-    const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = maxDim > 0 ? 2 / maxDim : 1;
-
-    clonedScene.scale.set(scale, scale, scale);
-    clonedScene.position.set(
-      -center.x * scale,
-      -box.min.y * scale,
-      -center.z * scale
-    );
-  }, [clonedScene]);
-
-  return (
-    <group ref={groupRef}>
-      <primitive object={clonedScene} />
-    </group>
-  );
+  return <primitive object={deformed} />;
 }
 
 // ─── Error Boundary ───────────────────────────────────────────────────────────
@@ -141,7 +169,15 @@ function LoadingFallback() {
 
 // ─── Main Viewer Component ────────────────────────────────────────────────────
 
-export function Viewer3D({ schema, config, refinedMeshUrl }: Viewer3DProps) {
+export function Viewer3D({
+  schema,
+  config,
+  refinedMeshUrl,
+  refinementBaselineConfig,
+  onRepeatCountChanged,
+}: Viewer3DProps) {
+  const hasRefinedMesh = !!(refinedMeshUrl && refinementBaselineConfig);
+
   return (
     <div className="w-full h-full rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800">
       <Canvas
@@ -154,11 +190,17 @@ export function Viewer3D({ schema, config, refinedMeshUrl }: Viewer3DProps) {
         <directionalLight position={[-3, 4, -2]} intensity={0.3} />
 
         <Suspense fallback={<LoadingFallback />}>
-          {refinedMeshUrl ? (
+          {hasRefinedMesh ? (
             <MeshErrorBoundary
               fallback={<ProceduralMesh schema={schema} config={config} />}
             >
-              <GLBMesh url={refinedMeshUrl} />
+              <RefinedParametricMesh
+                url={refinedMeshUrl}
+                schema={schema}
+                config={config}
+                baselineConfig={refinementBaselineConfig}
+                onRepeatCountChanged={onRepeatCountChanged}
+              />
             </MeshErrorBoundary>
           ) : (
             <ProceduralMesh schema={schema} config={config} />

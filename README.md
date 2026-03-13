@@ -8,7 +8,7 @@ A Next.js 15 prototype implementing the VLM-authored mesh transformation pipelin
 
 1. **Image Upload** — User uploads a 2D product photo
 2. **Mesh Generation** — Hyper3D Rodin Gen-2 API generates a GLB mesh
-3. **VLM Analysis** — Gemini 2.5 Pro analyzes the mesh and generates a Parametric Manifest (JSON schema + Three.js transformation script)
+3. **VLM Analysis** — Gemini 3.1 Flash Image Preview Pro analyzes the mesh and generates a Parametric Manifest (JSON schema + Three.js transformation script)
 4. **Parametric Viewer** — React Three Fiber renders the mesh with real-time parametric controls (sliders/toggles)
 
 ## Stack

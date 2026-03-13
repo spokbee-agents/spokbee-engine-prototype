@@ -10,3 +10,6 @@ export { validateConstraints, countNodes, estimateBoundingBox } from "./validato
 
 // Geometry engine (Three.js scene graph builder)
 export { buildAssembly } from "./geometry-engine";
+
+// Rodin deformer (parametric deformation of refined meshes)
+export { deformRodinMesh } from "./rodin-deformer";

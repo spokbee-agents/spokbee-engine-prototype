@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, lazy, Suspense } from "react";
-import { ImageUploader } from "@/components/ImageUploader";
+import { ProductInput } from "@/components/ProductInput";
 import { ControlPanel } from "@/components/ControlPanel";
 import { PipelineStatus } from "@/components/PipelineStatus";
 import { MOCK_ASSEMBLY_SCHEMA, getDefaultConfig } from "@/lib/mock-data";
@@ -30,6 +30,9 @@ export default function Home() {
   );
   const [validationResult, setValidationResult] =
     useState<ValidationResult | null>(null);
+  const [refinementBaselineConfig, setRefinementBaselineConfig] =
+    useState<ParametricConfig | null>(null);
+  const [repeatCountChanged, setRepeatCountChanged] = useState(false);
 
   // QA Auditor: validate constraints on every config change
   useMemo(() => {
@@ -37,28 +40,37 @@ export default function Home() {
     setValidationResult(result);
   }, [schema, config]);
 
-  const handleImageSelected = useCallback(
-    async (_file: File, dataUrl: string) => {
+  const handleInput = useCallback(
+    async (input: { file?: File; dataUrl?: string; prompt?: string }) => {
+      const { dataUrl, prompt } = input;
+      const isTextOnly = !dataUrl && !!prompt;
+
       setPipeline({
-        stage: "uploading",
-        progress: 10,
-        message: "Uploading image...",
+        stage: isTextOnly ? "analyzing" : "uploading",
+        progress: isTextOnly ? 30 : 10,
+        message: isTextOnly
+          ? "Generating from description..."
+          : "Uploading image...",
         imageDataUrl: dataUrl,
       });
 
       try {
-        // Gemini analyzes image and generates Assembly Schema (PIR)
-        setPipeline((s) => ({
-          ...s,
-          stage: "analyzing",
-          progress: 40,
-          message: "Analyzing image with Gemini...",
-        }));
+        if (!isTextOnly) {
+          setPipeline((s) => ({
+            ...s,
+            stage: "analyzing",
+            progress: 40,
+            message: "Analyzing image with Gemini...",
+          }));
+        }
 
         const schemaRes = await fetch("/api/generate-schema", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageDataUrl: dataUrl }),
+          body: JSON.stringify({
+            ...(dataUrl ? { imageDataUrl: dataUrl } : {}),
+            ...(prompt ? { productDescription: prompt } : {}),
+          }),
         });
         const schemaData = await schemaRes.json();
 
@@ -72,8 +84,10 @@ export default function Home() {
         const newConfig = getDefaultConfig(newSchema);
         setConfig(newConfig);
 
-        // Clear any previous validation
+        // Clear previous state
         setValidationResult(null);
+        setRefinementBaselineConfig(null);
+        setRepeatCountChanged(false);
 
         setPipeline({
           stage: "ready",
@@ -165,11 +179,14 @@ export default function Home() {
         );
       }
 
+      // Snapshot the current config as the refinement baseline
+      setRefinementBaselineConfig({ ...config });
+
       setPipeline((s) => ({
         ...s,
         stage: "refined",
         progress: 100,
-        message: "Rodin-refined mesh loaded",
+        message: "Rodin-refined mesh loaded — sliders still active",
         refinedMeshUrl: meshUrl!,
       }));
     } catch (err) {
@@ -181,7 +198,7 @@ export default function Home() {
         error: String(err),
       }));
     }
-  }, [pipeline.imageDataUrl]);
+  }, [pipeline.imageDataUrl, config]);
 
   const hasViolations =
     validationResult && validationResult.violations.length > 0;
@@ -222,6 +239,8 @@ export default function Home() {
               schema={schema}
               config={config}
               refinedMeshUrl={pipeline.refinedMeshUrl}
+              refinementBaselineConfig={refinementBaselineConfig ?? undefined}
+              onRepeatCountChanged={setRepeatCountChanged}
             />
           </Suspense>
         </section>
@@ -230,6 +249,14 @@ export default function Home() {
         <aside className="flex-1 md:flex-[1] border-t md:border-t-0 md:border-l border-zinc-800 p-4 md:p-4 flex flex-col gap-4 overflow-y-auto">
           {/* Pipeline status */}
           <PipelineStatus state={pipeline} />
+
+          {/* Repeat count changed warning */}
+          {repeatCountChanged && pipeline.refinedMeshUrl && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs bg-blue-950/50 border border-blue-800 text-blue-400">
+              <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>Repeat count changed — re-refine for best visual results</span>
+            </div>
+          )}
 
           {/* Validation warnings/errors */}
           {hasViolations && (
@@ -250,14 +277,14 @@ export default function Home() {
             </div>
           )}
 
-          {/* Image upload */}
+          {/* Product input (text prompt or image) */}
           <div>
             <h3 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Layers className="w-3 h-3" />
               Input
             </h3>
-            <ImageUploader
-              onImageSelected={handleImageSelected}
+            <ProductInput
+              onSubmit={handleInput}
               disabled={
                 pipeline.stage !== "idle" &&
                 pipeline.stage !== "ready" &&
@@ -282,17 +309,25 @@ export default function Home() {
 
           {/* Refine with Rodin button */}
           {(pipeline.stage === "ready" || pipeline.stage === "refined" || pipeline.stage === "refining") && (
-            <button
-              onClick={handleRefine}
-              disabled={pipeline.stage === "refining"}
-              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg
-                border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 hover:border-zinc-600
-                text-sm text-zinc-300 transition-colors
-                disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Sparkles className="w-4 h-4" />
-              Refine with Rodin
-            </button>
+            <div>
+              <button
+                onClick={handleRefine}
+                disabled={pipeline.stage === "refining" || !pipeline.imageDataUrl}
+                title={!pipeline.imageDataUrl ? "Upload an image to enable Rodin refinement" : undefined}
+                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg
+                  border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 hover:border-zinc-600
+                  text-sm text-zinc-300 transition-colors
+                  disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:border-zinc-700"
+              >
+                <Sparkles className="w-4 h-4" />
+                Refine with Rodin
+              </button>
+              {!pipeline.imageDataUrl && (
+                <p className="text-[10px] text-zinc-600 mt-1 text-center">
+                  Requires an image input for mesh refinement
+                </p>
+              )}
+            </div>
           )}
 
           {/* Assembly Schema JSON preview */}

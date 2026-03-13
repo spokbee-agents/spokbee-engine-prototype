@@ -44,7 +44,7 @@ export const AssemblyNodeSchema: z.ZodType<AssemblyNode> = z.lazy(() =>
 
     // Primitive geometry (only when type === "primitive")
     primitive: z
-      .enum(["box", "cylinder", "sphere", "cone", "torus", "extrusion"])
+      .enum(["box", "rounded_box", "cylinder", "sphere", "ellipsoid", "cone", "torus", "extrusion", "lathe", "capsule", "plane"])
       .optional(),
     // Dimensions keyed by primitive-specific names, values can be expressions
     // e.g. { width: "$width", height: "$height * 0.04", depth: "$depth" }
@@ -66,6 +66,9 @@ export const AssemblyNodeSchema: z.ZodType<AssemblyNode> = z.lazy(() =>
     // Repeat configuration (stamps this node N times along an axis)
     repeat: RepeatConfigSchema.optional(),
 
+    // CSG boolean operation (for group nodes)
+    boolean_op: z.enum(["union", "subtract", "intersect"]).optional(),
+
     // Tags for the QA auditor and refiner
     tags: z.array(z.string()).optional(),
   })
@@ -75,13 +78,14 @@ export interface AssemblyNode {
   id: string;
   label?: string;
   type: "group" | "primitive";
-  primitive?: "box" | "cylinder" | "sphere" | "cone" | "torus" | "extrusion";
+  primitive?: "box" | "rounded_box" | "cylinder" | "sphere" | "ellipsoid" | "cone" | "torus" | "extrusion" | "lathe" | "capsule" | "plane";
   dimensions?: Record<string, Expression>;
   position?: [Expression, Expression, Expression];
   rotation?: [number, number, number];
   material?: MaterialDef;
   children?: AssemblyNode[];
   repeat?: RepeatConfig;
+  boolean_op?: "union" | "subtract" | "intersect";
   tags?: string[];
 }
 
@@ -90,13 +94,13 @@ export interface AssemblyNode {
 export const ParameterSchema = z.object({
   id: z.string(),
   label: z.string(),
-  type: z.enum(["continuous", "discrete"]),
+  type: z.enum(["continuous", "discrete"]).catch("continuous"),
   unit: z.string().optional(),
   min: z.number(),
   max: z.number(),
   default: z.number(),
   step: z.number().optional(),
-  group: z.string().optional(), // UI grouping: "Dimensions", "Features", etc.
+  group: z.string().optional(),
 });
 
 export type Parameter = z.infer<typeof ParameterSchema>;
@@ -105,9 +109,9 @@ export type Parameter = z.infer<typeof ParameterSchema>;
 
 export const ConstraintSchema = z.object({
   id: z.string().optional(),
-  rule: z.string(), // expression that must evaluate to true
+  rule: z.string(),
   errorMessage: z.string(),
-  severity: z.enum(["error", "warning"]).default("error"),
+  severity: z.enum(["error", "warning"]).optional().default("error"),
 });
 
 export type Constraint = z.infer<typeof ConstraintSchema>;
@@ -115,7 +119,7 @@ export type Constraint = z.infer<typeof ConstraintSchema>;
 // ─── Assembly Schema (the PIR — Parametric Intermediate Representation) ────────
 
 export const AssemblySchemaSchema = z.object({
-  version: z.literal("2.0"),
+  version: z.string().default("2.0"),
   productType: z.string(),
   parameters: z.array(ParameterSchema),
   assembly: AssemblyNodeSchema,
