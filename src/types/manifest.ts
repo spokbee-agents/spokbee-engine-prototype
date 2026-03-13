@@ -37,6 +37,7 @@ export const ParametricManifestSchema = z.object({
   parameters: z.array(ParameterSchema),
   segments: z.array(SegmentSchema),
   constraints: z.array(ConstraintSchema).optional(),
+  transformScript: z.string().optional(),
 });
 
 export type Parameter = z.infer<typeof ParameterSchema>;

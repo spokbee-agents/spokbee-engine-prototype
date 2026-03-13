@@ -1,156 +1,134 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Environment, ContactShadows, Grid, useGLTF } from "@react-three/drei";
-import { Suspense, useMemo, useEffect, useRef, Component, type ReactNode } from "react";
+import {
+  OrbitControls,
+  Environment,
+  ContactShadows,
+  Grid,
+  useGLTF,
+} from "@react-three/drei";
+import {
+  Suspense,
+  useMemo,
+  useEffect,
+  useRef,
+  Component,
+  type ReactNode,
+} from "react";
 import * as THREE from "three";
+import type { AssemblySchema, ParametricConfig } from "@/types/assembly-schema";
+import { buildAssembly } from "@/engine/geometry-engine";
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Viewer3DProps {
-  heightScale: number;
-  widthScale: number;
-  depthScale: number;
-  drawerCount: number;
-  meshUrl?: string;
+  schema: AssemblySchema;
+  config: ParametricConfig;
+  refinedMeshUrl?: string; // optional Rodin-refined GLB
 }
 
-function Cabinet({
-  heightScale,
-  widthScale,
-  depthScale,
-  drawerCount,
-}: Omit<Viewer3DProps, "meshUrl">) {
-  const cabinetColor = "#8B7355";
-  const drawerColor = "#A0926B";
-  const handleColor = "#C0C0C0";
+// ─── Dispose Helper ───────────────────────────────────────────────────────────
 
-  const baseW = 1;
-  const baseH = 2;
-  const baseD = 0.6;
-  const panelThickness = 0.04;
-
-  const w = baseW * widthScale;
-  const h = baseH * heightScale;
-  const d = baseD * depthScale;
-
-  const drawerConfigs = useMemo(() => {
-    const count = Math.round(drawerCount);
-    const topMargin = panelThickness;
-    const bottomMargin = panelThickness;
-    const usableHeight = h - topMargin - bottomMargin;
-    const gap = 0.02;
-    const drawerH = (usableHeight - gap * (count + 1)) / count;
-    const configs = [];
-    for (let i = 0; i < count; i++) {
-      const y = bottomMargin + gap + i * (drawerH + gap) + drawerH / 2;
-      configs.push({ y, height: drawerH });
+/** Recursively dispose all geometries and materials in an Object3D tree. */
+function disposeObject(obj: THREE.Object3D): void {
+  obj.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry?.dispose();
+      if (Array.isArray(child.material)) {
+        child.material.forEach((m: THREE.Material) => m.dispose());
+      } else if (child.material) {
+        child.material.dispose();
+      }
     }
-    return configs;
-  }, [drawerCount, h]);
-
-  const woodMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: cabinetColor, roughness: 0.7, metalness: 0.05 }),
-    []
-  );
-  const drawerMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: drawerColor, roughness: 0.6, metalness: 0.05 }),
-    []
-  );
-  const handleMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: handleColor, roughness: 0.3, metalness: 0.8 }),
-    []
-  );
-
-  return (
-    <group position={[0, h / 2, 0]}>
-      {/* Back panel */}
-      <mesh position={[0, 0, -d / 2 + panelThickness / 2]} material={woodMaterial}>
-        <boxGeometry args={[w, h, panelThickness]} />
-      </mesh>
-
-      {/* Left panel */}
-      <mesh position={[-w / 2 + panelThickness / 2, 0, 0]} material={woodMaterial}>
-        <boxGeometry args={[panelThickness, h, d]} />
-      </mesh>
-
-      {/* Right panel */}
-      <mesh position={[w / 2 - panelThickness / 2, 0, 0]} material={woodMaterial}>
-        <boxGeometry args={[panelThickness, h, d]} />
-      </mesh>
-
-      {/* Top panel */}
-      <mesh position={[0, h / 2 - panelThickness / 2, 0]} material={woodMaterial}>
-        <boxGeometry args={[w + 0.02, panelThickness, d + 0.02]} />
-      </mesh>
-
-      {/* Bottom panel */}
-      <mesh position={[0, -h / 2 + panelThickness / 2, 0]} material={woodMaterial}>
-        <boxGeometry args={[w, panelThickness, d]} />
-      </mesh>
-
-      {/* Drawers */}
-      {drawerConfigs.map((dc, i) => (
-        <group key={i} position={[0, dc.y - h / 2, d / 2 - 0.02]}>
-          {/* Drawer face */}
-          <mesh material={drawerMaterial}>
-            <boxGeometry
-              args={[w - panelThickness * 2 - 0.02, dc.height - 0.01, panelThickness]}
-            />
-          </mesh>
-          {/* Handle */}
-          <mesh
-            position={[0, 0, panelThickness / 2 + 0.01]}
-            material={handleMaterial}
-          >
-            <boxGeometry args={[w * 0.3, 0.02, 0.02]} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
+  });
 }
+
+// ─── Procedural Mesh (Assembly Schema + Config -> Three.js via geometry engine)
+
+function ProceduralMesh({
+  schema,
+  config,
+}: {
+  schema: AssemblySchema;
+  config: ParametricConfig;
+}) {
+  const prevGroupRef = useRef<THREE.Group | null>(null);
+
+  const group = useMemo(() => {
+    return buildAssembly(schema, config);
+  }, [schema, config]);
+
+  // Dispose the previous group when a new one is built
+  useEffect(() => {
+    const prev = prevGroupRef.current;
+    prevGroupRef.current = group;
+
+    return () => {
+      if (prev) {
+        disposeObject(prev);
+      }
+    };
+  }, [group]);
+
+  return <primitive object={group} />;
+}
+
+// ─── GLB Mesh (for Rodin-refined models) ──────────────────────────────────────
 
 function GLBMesh({ url }: { url: string }) {
   const { scene } = useGLTF(url);
   const groupRef = useRef<THREE.Group>(null);
+  const clonedScene = useMemo(() => scene.clone(true), [scene]);
 
   useEffect(() => {
-    // Center and scale the loaded model
-    const box = new THREE.Box3().setFromObject(scene);
+    // Center and scale the loaded model to fit within a 2-unit box, grounded on Y=0
+    const box = new THREE.Box3().setFromObject(clonedScene);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
 
-    // Scale to fit within a 2-unit bounding box
     const maxDim = Math.max(size.x, size.y, size.z);
     const scale = maxDim > 0 ? 2 / maxDim : 1;
 
-    scene.scale.setScalar(scale);
-    scene.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
-  }, [scene]);
+    clonedScene.scale.set(scale, scale, scale);
+    clonedScene.position.set(
+      -center.x * scale,
+      -box.min.y * scale,
+      -center.z * scale
+    );
+  }, [clonedScene]);
 
   return (
     <group ref={groupRef}>
-      <primitive object={scene} />
+      <primitive object={clonedScene} />
     </group>
   );
 }
+
+// ─── Error Boundary ───────────────────────────────────────────────────────────
 
 class MeshErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
   { hasError: boolean }
 > {
   state = { hasError: false };
+
   static getDerivedStateFromError() {
     return { hasError: true };
   }
+
   componentDidUpdate(prevProps: { children: ReactNode }) {
     if (prevProps.children !== this.props.children) {
       this.setState({ hasError: false });
     }
   }
+
   render() {
     return this.state.hasError ? this.props.fallback : this.props.children;
   }
 }
+
+// ─── Loading Fallback ─────────────────────────────────────────────────────────
 
 function LoadingFallback() {
   return (
@@ -161,7 +139,9 @@ function LoadingFallback() {
   );
 }
 
-export function Viewer3D(props: Viewer3DProps) {
+// ─── Main Viewer Component ────────────────────────────────────────────────────
+
+export function Viewer3D({ schema, config, refinedMeshUrl }: Viewer3DProps) {
   return (
     <div className="w-full h-full rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800">
       <Canvas
@@ -174,26 +154,14 @@ export function Viewer3D(props: Viewer3DProps) {
         <directionalLight position={[-3, 4, -2]} intensity={0.3} />
 
         <Suspense fallback={<LoadingFallback />}>
-          {props.meshUrl ? (
+          {refinedMeshUrl ? (
             <MeshErrorBoundary
-              fallback={
-                <Cabinet
-                  heightScale={props.heightScale}
-                  widthScale={props.widthScale}
-                  depthScale={props.depthScale}
-                  drawerCount={props.drawerCount}
-                />
-              }
+              fallback={<ProceduralMesh schema={schema} config={config} />}
             >
-              <GLBMesh url={props.meshUrl} />
+              <GLBMesh url={refinedMeshUrl} />
             </MeshErrorBoundary>
           ) : (
-            <Cabinet
-              heightScale={props.heightScale}
-              widthScale={props.widthScale}
-              depthScale={props.depthScale}
-              drawerCount={props.drawerCount}
-            />
+            <ProceduralMesh schema={schema} config={config} />
           )}
           <ContactShadows
             position={[0, -0.01, 0]}

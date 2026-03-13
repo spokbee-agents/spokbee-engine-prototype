@@ -34,7 +34,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Set in `.env.local`:
 
-- `RODIN_API_KEY` — [Hyper3D Rodin](https://hyper3d.ai) for mesh generation
+- `FAL_KEY` or `RODIN_API_KEY` — [Hyper3D Rodin](https://hyper3d.ai) via fal for mesh generation
 - `GEMINI_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey) for VLM analysis
 
 **Demo mode works without keys** — the app returns mock responses to demonstrate the full UI/interaction flow.

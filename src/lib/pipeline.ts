@@ -1,10 +1,10 @@
 export type PipelineStage =
   | "idle"
   | "uploading"
-  | "generating-mesh"
-  | "analyzing"
-  | "generating-schema"
-  | "ready"
+  | "analyzing"        // Gemini generating Assembly Schema
+  | "ready"            // Procedural mesh ready, sliders active
+  | "refining"         // Rodin post-processing the scaffold
+  | "refined"          // Rodin mesh loaded
   | "error";
 
 export interface PipelineState {
@@ -12,16 +12,16 @@ export interface PipelineState {
   progress: number;
   message: string;
   error?: string;
-  meshUrl?: string;
   imageDataUrl?: string;
+  refinedMeshUrl?: string;  // Rodin-polished GLB URL (only after refinement)
 }
 
 export const STAGE_LABELS: Record<PipelineStage, string> = {
   idle: "Upload an image to begin",
   uploading: "Uploading image...",
-  "generating-mesh": "Generating 3D mesh via Rodin API...",
-  analyzing: "Rendering mesh views for VLM analysis...",
-  "generating-schema": "Generating parametric schema via Gemini...",
+  analyzing: "Analyzing image with Gemini...",
   ready: "Parametric configurator ready",
+  refining: "Refining mesh with Rodin...",
+  refined: "Rodin-refined mesh loaded",
   error: "An error occurred",
 };

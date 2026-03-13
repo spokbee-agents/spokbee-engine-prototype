@@ -1,55 +1,109 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { AssemblySchemaSchema } from "@/types/assembly-schema";
+import { MOCK_ASSEMBLY_SCHEMA } from "@/lib/mock-data";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-const SYSTEM_PROMPT = `You are a parametric 3D product analyzer for the Spokbee 4.0 engine.
+const SYSTEM_PROMPT = `You are the Architect agent for the Spokbee 5.0 Universal Parametric Pipeline. Your role is to analyze a product image and output a recursive Assembly Schema (Parametric Intermediate Representation / PIR) that a procedural geometry engine can use to build an editable 3D model.
 
-Given an image of a product (furniture, fixture, etc.), analyze its structure and generate a Parametric Manifest that describes:
-1. The configurable parameters (dimensions, counts, material options)
-2. The geometric segments of the mesh and how they relate to parameters
-3. A Three.js transformation script that can modify the mesh based on parameter values
+## Output Format
+Output ONLY valid JSON matching the Assembly Schema format below. No markdown, no explanation.
 
-Output ONLY valid JSON matching this schema:
 {
-  "version": "1.0",
-  "productType": "<detected product type>",
-  "baseAsset": "base_mesh.glb",
+  "version": "2.0",
+  "productType": "<detected product type, e.g. cabinet, chair, table, shelf, lamp>",
   "parameters": [
     {
-      "id": "<param_id>",
-      "label": "<Human Label>",
+      "id": "<snake_case_id>",
+      "label": "<Human Readable Label>",
       "type": "continuous" | "discrete",
-      "unit": "<optional unit>",
+      "unit": "<optional unit, e.g. inches, cm, mm>",
       "min": <number>,
       "max": <number>,
       "default": <number>,
-      "step": <optional step>
+      "step": <optional step size>,
+      "group": "<optional UI group, e.g. Dimensions, Features, Style>"
     }
   ],
-  "segments": [
-    {
-      "id": "<segment_id>",
-      "type": "rigid" | "stretchable" | "repeatable",
-      "boundingBox": {
-        "min": [x, y, z],
-        "max": [x, y, z]
-      },
-      "stretchAxis": "x" | "y" | "z",
-      "linkedTo": "<param_id>",
-      "behavior": "<optional behavior>"
-    }
-  ],
+  "assembly": <AssemblyNode>,
   "constraints": [
     {
-      "rule": "<constraint expression>",
-      "errorMessage": "<error message>"
+      "id": "<constraint_id>",
+      "rule": "<expression that must be true, e.g. $drawerCount * 8 <= $height - 4>",
+      "errorMessage": "<user-facing message>",
+      "severity": "error" | "warning"
     }
-  ],
-  "transformScript": "<Three.js code as a string that exports applyParametricConfig(scene, config, manifest)>"
+  ]
 }
 
-Focus on identifying practical, realistic parameters that a manufacturer would want to configure. Be conservative with ranges.`;
+## AssemblyNode Structure (recursive)
+Each node is either a "group" (container) or a "primitive" (geometry):
+
+{
+  "id": "<unique_snake_case_id>",
+  "label": "<Human Label>",
+  "type": "group" | "primitive",
+
+  // For primitives only:
+  "primitive": "box" | "cylinder" | "sphere" | "cone" | "torus",
+  "dimensions": {
+    // For box: "width", "height", "depth"
+    // For cylinder: "radius", "height", "radiusTop", "radiusBottom"
+    // For sphere: "radius"
+    // For cone: "radius", "height"
+    // For torus: "radius", "tube"
+    // Values can be numbers or expression strings referencing parameters:
+    "<key>": <number> | "<expression string>"
+  },
+
+  // Transform (relative to parent):
+  "position": [<x>, <y>, <z>],  // each can be a number or expression string
+  "rotation": [<rx>, <ry>, <rz>],  // euler angles in degrees (numbers only)
+
+  // Material:
+  "material": {
+    "color": "<hex color>",
+    "roughness": <0-1>,
+    "metalness": <0-1>,
+    "opacity": <0-1>
+  },
+
+  // For groups only:
+  "children": [<AssemblyNode>, ...],
+
+  // Optional repeat (stamps this node N times along an axis):
+  "repeat": {
+    "count": <number or expression>,
+    "axis": "x" | "y" | "z",
+    "spacing": <number or expression>,
+    "offset": <number or expression>
+  },
+
+  "tags": ["<optional>", "<classification>", "<tags>"]
+}
+
+## Expression Syntax
+Expressions are strings that reference parameters with $ prefix and support arithmetic:
+- Simple reference: "$width"
+- Arithmetic: "$height * 0.5", "$width - 2", "$depth / $drawerCount"
+- Parentheses: "($height - 4) / $drawerCount"
+- Negation: "$width / -2", "-$depth / 2"
+- Literal numbers mixed with references: "$width + 0.5"
+
+## Guidelines
+1. Identify the product type and break it into a hierarchical component tree.
+2. The root node should be a group containing all major structural sub-assemblies.
+3. Use groups to organize related parts (e.g., a "leg_assembly" group containing 4 leg primitives).
+4. Use repeat for any parts that appear in a regular pattern (drawers, shelves, slats, legs, etc.).
+5. Choose realistic default dimensions in inches or cm. Be conservative with parameter ranges.
+6. All position values should be relative to the parent group's origin.
+7. Use expressions to make dimensions and positions parametric — link everything back to the parameters.
+8. Assign distinct materials with realistic colors for different part types (wood, metal, glass, fabric, etc.).
+9. Add constraints that enforce physical feasibility (parts fitting, proportions, stability).
+10. Tag nodes for classification: "structural", "decorative", "hardware", "repeatable", etc.
+11. Think about how the model should look when parameters change — positions must update correctly.
+12. The model's origin should be at the bottom-center so it sits on the ground plane.`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,35 +119,14 @@ export async function POST(request: NextRequest) {
 
     // If no API key, return mock response
     if (!GEMINI_API_KEY) {
-      console.log("[MOCK] Gemini API — returning demo manifest");
+      console.log("[generate-schema] MOCK — returning demo assembly schema");
       await new Promise((r) => setTimeout(r, 1500));
 
       return NextResponse.json({
-        manifest: {
-          version: "1.0",
-          productType: "cabinet",
-          baseAsset: "base_mesh.glb",
-          parameters: [
-            { id: "height", label: "Height", type: "continuous", unit: "inches", min: 40, max: 80, default: 60, step: 1 },
-            { id: "width", label: "Width", type: "continuous", unit: "inches", min: 20, max: 48, default: 30, step: 1 },
-            { id: "depth", label: "Depth", type: "continuous", unit: "inches", min: 12, max: 24, default: 18, step: 1 },
-            { id: "drawerCount", label: "Drawers", type: "discrete", min: 1, max: 6, default: 3 },
-          ],
-          segments: [
-            {
-              id: "body",
-              type: "stretchable",
-              boundingBox: { min: [-1, 0, -1], max: [1, 2, 1] },
-              stretchAxis: "y",
-              linkedTo: "height",
-            },
-          ],
-          constraints: [
-            { rule: "drawerCount * 8 <= height - 4", errorMessage: "Too many drawers for this height" },
-          ],
-        },
+        schema: MOCK_ASSEMBLY_SCHEMA,
         mock: true,
-        message: "Mock response — set GEMINI_API_KEY in .env.local for real analysis",
+        message:
+          "Mock response — set GEMINI_API_KEY in .env.local for real analysis",
       });
     }
 
@@ -127,8 +160,8 @@ export async function POST(request: NextRequest) {
             },
             {
               text: productDescription
-                ? `The product is: ${productDescription}. Analyze this image and generate the parametric manifest.`
-                : "Analyze this product image and generate the parametric manifest.",
+                ? `The product is: ${productDescription}. Analyze this image and generate the Assembly Schema (PIR).`
+                : "Analyze this product image and generate the Assembly Schema (PIR).",
             },
           ],
         },
@@ -138,12 +171,32 @@ export async function POST(request: NextRequest) {
     const text = response.text ?? "";
 
     // Extract JSON from response (handle markdown code blocks)
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [
+      null,
+      text,
+    ];
     const jsonStr = jsonMatch[1]?.trim() || text.trim();
 
-    const manifest = JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
 
-    return NextResponse.json({ manifest });
+    // Validate against Assembly Schema
+    const validated = AssemblySchemaSchema.safeParse(parsed);
+    if (!validated.success) {
+      console.error(
+        "[generate-schema] Gemini output failed validation:",
+        validated.error.issues
+      );
+      return NextResponse.json(
+        {
+          error: "Gemini output did not match Assembly Schema format",
+          details: validated.error.issues,
+          rawOutput: jsonStr.slice(0, 2000),
+        },
+        { status: 422 }
+      );
+    }
+
+    return NextResponse.json({ schema: validated.data });
   } catch (error) {
     console.error("Gemini API error:", error);
     return NextResponse.json(

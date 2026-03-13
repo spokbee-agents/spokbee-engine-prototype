@@ -1,6 +1,6 @@
 "use client";
 
-import { Parameter, ParametricConfig } from "@/types/manifest";
+import { Parameter, ParametricConfig } from "@/types/assembly-schema";
 
 interface ControlPanelProps {
   parameters: Parameter[];
