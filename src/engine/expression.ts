@@ -299,9 +299,8 @@ class Parser {
       this.advance();
       const name = t.value;
       if (!(name in this.config)) {
-        throw new Error(
-          `Unknown parameter "$${name}" -- not found in config`,
-        );
+        console.warn(`Unknown parameter "$${name}" -- not found in config, using 1`);
+        return 1;
       }
       return this.config[name];
     }
@@ -340,9 +339,8 @@ export function evaluateExpression(
   if (simpleRef) {
     const name = simpleRef[1];
     if (!(name in config)) {
-      throw new Error(
-        `Unknown parameter "$${name}" -- not found in config`,
-      );
+      console.warn(`Unknown parameter "$${name}" -- not found in config, using 1`);
+      return 1;
     }
     return config[name];
   }

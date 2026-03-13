@@ -19,9 +19,9 @@ export interface PipelineState {
 export const STAGE_LABELS: Record<PipelineStage, string> = {
   idle: "Upload an image to begin",
   uploading: "Uploading image...",
-  analyzing: "Analyzing image with Gemini...",
+  analyzing: "Analyzing image with Spokbee...",
   ready: "Parametric configurator ready",
-  refining: "Refining mesh with Rodin...",
-  refined: "Rodin-refined mesh loaded",
+  refining: "Refining mesh with Spokbee...",
+  refined: "Spokbee-refined mesh loaded",
   error: "An error occurred",
 };

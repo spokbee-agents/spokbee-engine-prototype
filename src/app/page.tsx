@@ -60,7 +60,7 @@ export default function Home() {
             ...s,
             stage: "analyzing",
             progress: 40,
-            message: "Analyzing image with Gemini...",
+            message: "Analyzing image with Spokbee...",
           }));
         }
 
@@ -120,7 +120,7 @@ export default function Home() {
       ...s,
       stage: "refining",
       progress: 20,
-      message: "Submitting to Rodin for refinement...",
+      message: "Submitting to Spokbee for refinement...",
     }));
 
     try {
@@ -141,7 +141,7 @@ export default function Home() {
         setPipeline((s) => ({
           ...s,
           progress: 40,
-          message: "Rodin is refining the mesh...",
+          message: "Spokbee is refining the mesh...",
         }));
 
         const maxPolls = 180;
@@ -167,7 +167,7 @@ export default function Home() {
             progress,
             message:
               statusData.status === "IN_PROGRESS"
-                ? "Rodin is refining the mesh..."
+                ? "Spokbee is refining the mesh..."
                 : "Refinement job queued...",
           }));
         }
@@ -186,7 +186,7 @@ export default function Home() {
         ...s,
         stage: "refined",
         progress: 100,
-        message: "Rodin-refined mesh loaded — sliders still active",
+        message: "Spokbee-refined mesh loaded — sliders still active",
         refinedMeshUrl: meshUrl!,
       }));
     } catch (err) {
@@ -212,7 +212,7 @@ export default function Home() {
             <Box className="w-5 h-5 text-zinc-950" />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight">Spokbee 5.0</h1>
+            <h1 className="text-sm font-bold tracking-tight">Spokbee 4.0</h1>
             <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
               Universal Parametric Pipeline
             </p>
@@ -313,14 +313,14 @@ export default function Home() {
               <button
                 onClick={handleRefine}
                 disabled={pipeline.stage === "refining" || !pipeline.imageDataUrl}
-                title={!pipeline.imageDataUrl ? "Upload an image to enable Rodin refinement" : undefined}
+                title={!pipeline.imageDataUrl ? "Upload an image to enable Spokbee refinement" : undefined}
                 className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg
                   border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 hover:border-zinc-600
                   text-sm text-zinc-300 transition-colors
                   disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zinc-800 disabled:hover:border-zinc-700"
               >
                 <Sparkles className="w-4 h-4" />
-                Refine with Rodin
+                Refine with Spokbee
               </button>
               {!pipeline.imageDataUrl && (
                 <p className="text-[10px] text-zinc-600 mt-1 text-center">

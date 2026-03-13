@@ -271,7 +271,7 @@ function attemptLenientParse(data: any): any | null {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-const SYSTEM_PROMPT = `You are the Architect agent for the Spokbee 5.0 Universal Parametric Pipeline. Your role is to analyze a product image and output a HIGH-DETAIL recursive Assembly Schema (Parametric Intermediate Representation / PIR) that a procedural geometry engine can use to build a visually accurate, recognizable 3D model.
+const SYSTEM_PROMPT = `You are the Architect agent for the Spokbee 4.0 Universal Parametric Pipeline. Your role is to analyze a product image and output a HIGH-DETAIL recursive Assembly Schema (Parametric Intermediate Representation / PIR) that a procedural geometry engine can use to build a visually accurate, recognizable 3D model.
 
 CRITICAL: Your output quality directly determines the visual fidelity of the 3D model. A lazy, low-node-count schema will produce a blocky, unrecognizable toy. A detailed 50-200+ node schema with proper CSG boolean operations, varied primitives, and realistic materials will produce a high-quality 3D representation that actually looks like the product. NEVER produce fewer than 40 nodes for any real product. Every visible surface, panel, trim piece, handle, button, light, vent, and detail must be its own node.
 
@@ -647,27 +647,105 @@ export async function POST(request: NextRequest) {
 
     console.log("[generate-schema] Gemini response length:", text.length);
     console.log("[generate-schema] Gemini response starts with:", text.slice(0, 200));
+    console.log("[generate-schema] Gemini response ends with:", text.slice(-200));
 
-    // Extract JSON from response (handle markdown code blocks)
-    // Try the largest code block first (greedy), then fall back to non-greedy
-    const jsonMatch =
-      text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];
-    let jsonStr = jsonMatch[1]?.trim() || text.trim();
+    let parsed: Record<string, unknown> | null = null;
 
-    // If the extracted string doesn't look like JSON, try to find a JSON object directly
-    if (!jsonStr.startsWith("{") && !jsonStr.startsWith("[")) {
-      const braceStart = text.indexOf("{");
-      const braceEnd = text.lastIndexOf("}");
-      if (braceStart !== -1 && braceEnd > braceStart) {
-        jsonStr = text.slice(braceStart, braceEnd + 1);
+    // Strategy 1: direct parse (works when responseMimeType is honoured)
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // continue to fallback strategies
+    }
+
+    // Strategy 2: extract from markdown code block
+    if (!parsed) {
+      const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch?.[1]) {
+        try {
+          parsed = JSON.parse(codeBlockMatch[1].trim());
+        } catch {
+          // continue
+        }
       }
     }
 
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(jsonStr);
-    } catch (jsonErr) {
-      console.error("[generate-schema] JSON parse failed. Raw text:", text.slice(0, 3000));
+    // Strategy 3: find outermost { ... } braces
+    if (!parsed) {
+      const braceStart = text.indexOf("{");
+      const braceEnd = text.lastIndexOf("}");
+      if (braceStart !== -1 && braceEnd > braceStart) {
+        try {
+          parsed = JSON.parse(text.slice(braceStart, braceEnd + 1));
+        } catch {
+          // continue
+        }
+      }
+    }
+
+    // Strategy 4: repair truncated JSON (Gemini hit token limit)
+    // Find the outermost { and attempt to close unclosed braces/brackets
+    if (!parsed) {
+      const braceStart = text.indexOf("{");
+      if (braceStart !== -1) {
+        let jsonStr = text.slice(braceStart);
+        // Strip trailing garbage after any content
+        jsonStr = jsonStr.replace(/[,\s]+$/, "");
+        // Count unclosed braces/brackets and close them
+        let braces = 0, brackets = 0;
+        let inString = false, escape = false;
+        for (const ch of jsonStr) {
+          if (escape) { escape = false; continue; }
+          if (ch === "\\") { escape = true; continue; }
+          if (ch === '"') { inString = !inString; continue; }
+          if (inString) continue;
+          if (ch === "{") braces++;
+          else if (ch === "}") braces--;
+          else if (ch === "[") brackets++;
+          else if (ch === "]") brackets--;
+        }
+        // Close any unclosed strings
+        if (inString) jsonStr += '"';
+        // Close unclosed brackets then braces
+        for (let i = 0; i < brackets; i++) jsonStr += "]";
+        for (let i = 0; i < braces; i++) jsonStr += "}";
+
+        try {
+          parsed = JSON.parse(jsonStr);
+          console.log("[generate-schema] Repaired truncated JSON successfully");
+        } catch {
+          // Last resort: try stripping the last partial value
+          const lastComma = jsonStr.lastIndexOf(",");
+          if (lastComma > 0) {
+            let trimmed = jsonStr.slice(0, lastComma);
+            // Re-count and close
+            braces = 0; brackets = 0; inString = false; escape = false;
+            for (const ch of trimmed) {
+              if (escape) { escape = false; continue; }
+              if (ch === "\\") { escape = true; continue; }
+              if (ch === '"') { inString = !inString; continue; }
+              if (inString) continue;
+              if (ch === "{") braces++;
+              else if (ch === "}") braces--;
+              else if (ch === "[") brackets++;
+              else if (ch === "]") brackets--;
+            }
+            if (inString) trimmed += '"';
+            for (let i = 0; i < brackets; i++) trimmed += "]";
+            for (let i = 0; i < braces; i++) trimmed += "}";
+            try {
+              parsed = JSON.parse(trimmed);
+              console.log("[generate-schema] Repaired truncated JSON (trimmed last value)");
+            } catch {
+              // give up
+            }
+          }
+        }
+      }
+    }
+
+    if (!parsed) {
+      console.error("[generate-schema] All JSON parse strategies failed. Raw text:", text.slice(0, 3000));
       return NextResponse.json(
         {
           error: "Gemini did not return valid JSON",
@@ -699,8 +777,8 @@ export async function POST(request: NextRequest) {
         JSON.stringify(issues.slice(0, 10), null, 2)
       );
       console.error(
-        "[generate-schema] Raw JSON (first 2000 chars):",
-        jsonStr.slice(0, 2000)
+        "[generate-schema] Raw response (first 2000 chars):",
+        text.slice(0, 2000)
       );
 
       // Try to return the schema anyway with minimal fixes, falling back gracefully
@@ -720,7 +798,7 @@ export async function POST(request: NextRequest) {
         {
           error: "Gemini output did not match Assembly Schema format",
           details: issues.slice(0, 5),
-          rawOutput: jsonStr.slice(0, 3000),
+          rawOutput: text.slice(0, 3000),
         },
         { status: 422 }
       );
